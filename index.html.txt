@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fluid Sim w/ Beat Detection</title>
+  <style>
+    html, body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #upload {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <input type="file" id="upload" accept="audio/*" />
+
+
+  <script src="https://cdn.jsdelivr.net/gh/PavelDoGreat/WebGL-Fluid-Simulation@master/script.js"></script>
+  <script>
+    const upload = document.getElementById('upload');
+    let audioCtx, analyser, source, dataArray;
+    let beatThreshold = 0.25;
+    let beatCooldown = 0;
+    let lastBass = 0;
+
+    upload.onchange = function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const audio = new Audio();
+        audio.src = e.target.result;
+        audio.loop = true;
+        audio.autoplay = true;
+
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        source = audioCtx.createMediaElementSource(audio);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 128;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        audio.play();
+        animate();
+      };
+      reader.readAsDataURL(file);
+    };
+
+    function getBassLevel() {
+      let bass = 0;
+      for (let i = 0; i < 6; i++) bass += dataArray[i];
+      return bass / 6 / 255;
+    }
+
+    function isBeat(bass) {
+      const isStrong = bass - lastBass > beatThreshold && beatCooldown <= 0;
+      lastBass = bass;
+      if (isStrong) {
+        beatCooldown = 15; // Cooldown to avoid rapid firing
+        return true;
+      }
+      beatCooldown--;
+      return false;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (!analyser) return;
+
+      analyser.getByteFrequencyData(dataArray);
+      const bass = getBassLevel();
+
+      // Regular motion from audio
+      const x = Math.random() * window.innerWidth;
+      const y = Math.random() * window.innerHeight;
+      const dx = (Math.random() - 0.5) * bass * 500;
+      const dy = (Math.random() - 0.5) * bass * 500;
+      const color = [bass, 0.4 + bass * 0.6, 1.0 - bass];
+      splat(x, y, dx, dy, color);
+
+      // Beat burst
+      if (isBeat(bass)) {
+        for (let i = 0; i < 3; i++) {
+          const bx = Math.random() * window.innerWidth;
+          const by = Math.random() * window.innerHeight;
+          const bdx = (Math.random() - 0.5) * 800;
+          const bdy = (Math.random() - 0.5) * 800;
+          const bColor = [1.0, 0.5 + Math.random() * 0.5, 0.2 + Math.random() * 0.8];
+          splat(bx, by, bdx, bdy, bColor);
+        }
+      }
+    }
+  </script>
+</body>
+</html>
